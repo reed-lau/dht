@@ -51,7 +51,6 @@ uv_loop_t* loop = nullptr;
 void alloc(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
   buf->base = (char*)malloc(suggested_size);
   buf->len = suggested_size;
-  printf("alloc size = %d\n", suggested_size);
 }
 
 void ping_send(uv_udp_send_t* req, int status) {
@@ -60,15 +59,26 @@ void ping_send(uv_udp_send_t* req, int status) {
 
 void response(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf,
               const struct sockaddr* addr, unsigned flags) {
-  printf("status = %d buf->len = %d buf->base = %s\n", nread, buf->len,
-         buf->base);
+  if (nread > 0) {
+    char* ptr = buf->base;
+    for (int i = 0; i < nread; ++i) {
+      if (isprint(ptr[i])) {
+        printf("%c", ptr[i]);
+      } else {
+        printf("?");
+      }
+    }
+    printf("\n");
+  } else {
+    printf(" === fail\n");
+  }
 }
 
 void host_resolved(uv_getaddrinfo_t* req, int status, struct addrinfo* res) {
   printf(" resolved status = %d\n", status);
 
   auto it = res;
-  for (it; it != nullptr; it = it->ai_next) {
+  for (; it != nullptr; it = it->ai_next) {
     if (it->ai_family == AF_INET && it->ai_socktype == SOCK_STREAM &&
         it->ai_addrlen >= 4) {
       uint8_t* addr =
