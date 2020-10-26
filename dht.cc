@@ -60,12 +60,12 @@ void ping_send(uv_udp_send_t* req, int status) {
 void response(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf,
               const struct sockaddr* addr, unsigned flags) {
   if (nread > 0) {
-    char* ptr = buf->base;
+    uint8_t* ptr = (uint8_t*)(buf->base);
     for (int i = 0; i < nread; ++i) {
       if (isprint(ptr[i])) {
         printf("%c", ptr[i]);
       } else {
-        printf("?");
+        printf("\\%u", ptr[i]);
       }
     }
     printf("\n");
@@ -85,8 +85,6 @@ void host_resolved(uv_getaddrinfo_t* req, int status, struct addrinfo* res) {
           (uint8_t*)&((struct sockaddr_in*)(it->ai_addr))->sin_addr.s_addr;
       printf("ip: %d.%d.%d.%d\n", addr[0], addr[1], addr[2], addr[3]);
 
-      // json p = {"t":"aa", "y":"q", "q":"ping",
-      // "a":{"id":"abcdefghij0123456789"}};
       json ping, a;
       a["id"] = "12345678901234567890";
       ping["t"] = "aa";
