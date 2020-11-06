@@ -46,6 +46,69 @@ std::string bencode(const json& j) {
   return ret;
 }
 
+int bdecode(const std::string& data, json* j) {
+  if (data.size() == 0) {
+    return 0;
+  }
+
+  // printf("-- decode -- %s\n", data.c_str());
+
+  // string case
+  int c = data[0];
+  if (isdigit(c)) {
+    // printf("string\n");
+    int e = data.find(':');
+    std::string numz = data.substr(0, e);
+    int num = std::stoi(numz);
+    std::string val = data.substr(e + 1, num);
+
+    *j = val;
+    // std::cout << "|" << numz << "|=" << val << std::endl;
+    return 1 + e + num;
+  } else if (c == 'i') {
+    // printf("integer\n");
+    auto e = data.find('e');
+    std::string s = data.substr(1, e - 2);
+    int val = std::stoi(s);
+    *j = val;
+    return e;
+  } else if (c == 'l') {
+    // printf("list\n");
+    *j = json::array();
+    int pos = 1;
+    while (1) {
+      json j0;
+      int x = bdecode(data.substr(pos), &j0);
+      pos += x;
+      if (x != 0) {
+        (*j).push_back(j0);
+      }
+      if (data[pos] == 'e') {
+        return pos + 1;
+      }
+    }
+  } else if (c == 'd') {
+    // printf("dict\n");
+    *j = json::object();
+    int pos = 1;
+    while (1) {
+      json key, val;
+      int x = bdecode(data.substr(pos), &key);
+      pos += x;
+      x = bdecode(data.substr(pos), &val);
+      pos += x;
+      if (x != 0) {
+        (*j)[key.get<std::string>()] = val;
+      }
+      if (data[pos] == 'e') {
+        return pos + 1;
+      }
+    }
+  }
+
+  return 0;
+}
+
 uv_loop_t* loop = nullptr;
 
 void alloc(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
@@ -54,36 +117,37 @@ void alloc(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
 }
 
 void ping_send(uv_udp_send_t* req, int status) {
-  printf("ping send, status = %d\n", status);
+  printf("-- ping send: %d\n", status);
 }
 
 void response(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf,
               const struct sockaddr* addr, unsigned flags) {
   if (nread > 0) {
-    uint8_t* ptr = (uint8_t*)(buf->base);
-    for (int i = 0; i < nread; ++i) {
-      if (isprint(ptr[i])) {
-        printf("%c", ptr[i]);
-      } else {
-        printf("\\%u", ptr[i]);
-      }
+    std::string data(buf->base, nread);
+
+    json j;
+    bdecode(data, &j);
+    std::string id = j["r"]["id"].get<std::string>();
+
+    printf("-- recv [%zu]: ", id.size());
+    for (uint32_t i = 0; i < id.size(); ++i) {
+      printf("%d.", (uint8_t)(id[i]));
     }
     printf("\n");
+
   } else {
     printf(" === fail\n");
   }
 }
 
 void host_resolved(uv_getaddrinfo_t* req, int status, struct addrinfo* res) {
-  printf(" resolved status = %d\n", status);
-
   auto it = res;
   for (; it != nullptr; it = it->ai_next) {
     if (it->ai_family == AF_INET && it->ai_socktype == SOCK_STREAM &&
         it->ai_addrlen >= 4) {
       uint8_t* addr =
           (uint8_t*)&((struct sockaddr_in*)(it->ai_addr))->sin_addr.s_addr;
-      printf("ip: %d.%d.%d.%d\n", addr[0], addr[1], addr[2], addr[3]);
+      printf("-- ip: %d.%d.%d.%d\n", addr[0], addr[1], addr[2], addr[3]);
 
       json ping, a;
       a["id"] = "12345678901234567890";
@@ -94,9 +158,7 @@ void host_resolved(uv_getaddrinfo_t* req, int status, struct addrinfo* res) {
 
       std::string x = bencode(ping);
 
-      std::cout << std::string(80, '=') << std::endl;
-      std::cout << x << std::endl;
-      std::cout << std::string(80, '=') << std::endl;
+      printf("-- send [%zu]: %s\n", x.size(), x.c_str());
 
       // krpc
       std::string xping = bencode(ping);
